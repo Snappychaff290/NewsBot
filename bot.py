@@ -35,6 +35,32 @@ summarizer = NewsSummarizer()
 scheduler = NewsScheduler()
 responder = ConversationalResponder()
 
+# Store pending article selections
+pending_selections = {}
+
+# Clean up old selections periodically
+import asyncio
+from datetime import datetime, timedelta
+
+async def cleanup_old_selections():
+    """Clean up selections older than 5 minutes."""
+    while True:
+        try:
+            current_time = datetime.now()
+            expired_keys = []
+            for key, data in pending_selections.items():
+                if 'timestamp' in data:
+                    if current_time - data['timestamp'] > timedelta(minutes=5):
+                        expired_keys.append(key)
+            
+            for key in expired_keys:
+                del pending_selections[key]
+                
+        except Exception as e:
+            logger.error(f"Error cleaning up selections: {str(e)}")
+        
+        await asyncio.sleep(300)  # Check every 5 minutes
+
 @bot.event
 async def on_ready():
     """Called when the bot is ready."""
@@ -54,6 +80,9 @@ async def on_ready():
     print(f"🔍 No-BS News Analyst is online!")
     print(f"📊 Database: {database.get_database_stats()['total_articles']} articles stored")
     print(f"💥 Ready to cut through propaganda and expose the truth!")
+    
+    # Start cleanup task
+    asyncio.create_task(cleanup_old_selections())
 
 @bot.event
 async def on_message(message):
@@ -96,37 +125,151 @@ async def on_message(message):
     # Process commands
     await bot.process_commands(message)
 
+@bot.event
+async def on_reaction_add(reaction, user):
+    """Handle reaction-based article selection."""
+    # Ignore bot's own reactions
+    if user == bot.user:
+        return
+    
+    # Check if this is a pending selection
+    selection_key = f"{reaction.message.channel.id}_{reaction.message.id}_{user.id}"
+    if selection_key not in pending_selections:
+        return
+    
+    selection_data = pending_selections[selection_key]
+    
+    # Process the reaction
+    number_emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣']
+    
+    try:
+        selected_articles = []
+        
+        if reaction.emoji == '🔥':
+            # Analyze all articles
+            selected_articles = selection_data['articles']
+            analysis_title = f"🔥 All Articles from {selection_data['source'] or 'Recent News'}"
+        elif reaction.emoji in number_emojis:
+            # Analyze specific article
+            article_index = number_emojis.index(reaction.emoji)
+            if article_index < len(selection_data['articles']):
+                selected_articles = [selection_data['articles'][article_index]]
+                analysis_title = f"🔍 Article Analysis - {selected_articles[0]['source']}"
+        else:
+            return  # Unknown reaction
+        
+        if not selected_articles:
+            return
+        
+        # Clear reactions and update message to show analysis is starting
+        await reaction.message.clear_reactions()
+        
+        embed = discord.Embed(
+            title="🔍 Analyzing Selected Articles...",
+            description="Cutting through the BS and exposing the real story...",
+            color=0xff4444
+        )
+        await reaction.message.edit(embed=embed)
+        
+        # Get skeptical analysis
+        if len(selected_articles) == 1:
+            # Single article analysis
+            article = selected_articles[0]
+            ai_analysis = f"**Single Article Deep Dive:**\n\n"
+            ai_analysis += f"**Title:** {article['title']}\n"
+            ai_analysis += f"**Source:** {article['source']}\n"
+            if article.get('published_at'):
+                ai_analysis += f"**Published:** {article['published_at']}\n"
+            ai_analysis += f"**URL:** {article['url']}\n\n"
+            
+            # Get detailed analysis of single article
+            single_analysis = summarizer.analyze_news_collection_skeptical([article])
+            ai_analysis += single_analysis
+        else:
+            # Multiple articles analysis
+            ai_analysis = summarizer.analyze_news_collection_skeptical(selected_articles)
+        
+        # Create final embed with analysis
+        embed = discord.Embed(
+            title=analysis_title,
+            description="**🔍 No-BS Analysis - Exposing the Real Story:**",
+            color=0xff4444
+        )
+        
+        # Handle long analysis (split if needed)
+        max_embed_chars = 5500
+        if len(ai_analysis) > max_embed_chars:
+            ai_analysis = ai_analysis[:max_embed_chars] + "\n\n**[Analysis truncated due to length - select fewer articles for full analysis]**"
+        
+        if len(ai_analysis) > 1024:
+            # Split into multiple fields
+            analysis_parts = [ai_analysis[i:i+1024] for i in range(0, len(ai_analysis), 1024)]
+            for i, part in enumerate(analysis_parts):
+                field_title = "Analysis" if i == 0 else f"Analysis (continued {i+1})"
+                embed.add_field(name=field_title, value=part, inline=False)
+        else:
+            embed.add_field(name="Analysis", value=ai_analysis, inline=False)
+        
+        # Add article links
+        if len(selected_articles) > 1:
+            article_links = "**Analyzed Articles:**\n"
+            for i, article in enumerate(selected_articles[:5], 1):  # Limit to 5 for space
+                article_links += f"{i}. [{article['source']}] {article['title'][:50]}...\n"
+                article_links += f"   🔗 [Read More]({article['url']})\n"
+            
+            if len(article_links) < 1000:  # Only add if it fits
+                embed.add_field(name="Source Articles", value=article_links, inline=False)
+        
+        embed.set_footer(text=f"Analysis requested by {user.display_name} | Articles: {len(selected_articles)}")
+        
+        await reaction.message.edit(embed=embed)
+        
+        # Clean up selection data
+        del pending_selections[selection_key]
+        
+    except Exception as e:
+        logger.error(f"Error in reaction handler: {str(e)}")
+        embed = discord.Embed(
+            title="❌ Analysis Error",
+            description="Sorry, I encountered an error while analyzing the selected articles.",
+            color=0xff0000
+        )
+        await reaction.message.edit(embed=embed)
+        
+        # Clean up selection data
+        if selection_key in pending_selections:
+            del pending_selections[selection_key]
+
 @bot.command(name='news')
 async def fetch_news(ctx, *, source: str = None):
     """
-    Skeptical analysis of latest news - exposes bias and agendas.
+    Interactive skeptical news analysis - select articles to analyze.
     Usage: |news [source]
     Example: |news CNN
     """
     try:
-        limit = 10  # Fixed limit for better analysis
+        limit = 10  # Get articles for selection
         
         # Send initial response
         embed = discord.Embed(
-            title="🔍 Analyzing News Bias & Agendas...",
-            description="Please wait while I cut through the propaganda and expose the real story.",
+            title="🔍 Loading Articles...",
+            description="Gathering articles for selection...",
             color=0xff4444
         )
         status_message = await ctx.send(embed=embed)
         
-        # Get articles to display (don't fetch new ones, use existing)
+        # Get articles to display
         if source:
             # Try exact match first
             articles = database.get_articles_by_source(source, limit)
             
             # If no exact match, try partial match
             if not articles:
-                all_articles = database.get_recent_articles(100)  # Get more for searching
+                all_articles = database.get_recent_articles(100)
                 articles = [a for a in all_articles if source.lower() in a.get('source', '').lower()]
                 articles = articles[:limit]
             
             if not articles:
-                # Show available sources if no match found
                 embed = discord.Embed(
                     title="📰 Source Not Found",
                     description=f"No articles found for source '{source}'. Use `|sources` to see available sources.",
@@ -146,69 +289,65 @@ async def fetch_news(ctx, *, source: str = None):
             await status_message.edit(embed=embed)
             return
         
-        # Get skeptical AI analysis of the articles
-        ai_analysis = summarizer.analyze_news_collection_skeptical(articles)
-        
-        # Create response embed with AI analysis
-        title = f"🔍 Skeptical News Analysis"
+        # Show article selection menu
+        title = f"🔍 Select Articles to Analyze"
         if source:
             title += f" - {source}"
         
         embed = discord.Embed(
             title=title,
-            description="**🔍 Skeptical Analysis - Both Sides Have Agendas:**",
+            description="**React with number emojis to select articles for skeptical analysis:**\n*Multiple selections allowed*",
             color=0xff4444
         )
         
-        # Add AI analysis as main content (with size limits)
-        max_embed_chars = 5500  # Leave some buffer for other fields
+        # Add articles as options (limit to 9 for emoji reactions)
+        article_list = ""
+        display_articles = articles[:9]  # Max 9 for number emojis
         
-        if len(ai_analysis) > max_embed_chars:
-            ai_analysis = ai_analysis[:max_embed_chars] + "\n\n**[Analysis truncated due to length limits]**"
-        
-        if len(ai_analysis) > 1024:
-            # Split long analysis into multiple fields
-            analysis_parts = [ai_analysis[i:i+1024] for i in range(0, len(ai_analysis), 1024)]
-            total_chars = 0
-            for i, part in enumerate(analysis_parts):
-                if total_chars + len(part) > max_embed_chars:
-                    break
-                field_title = "Analysis" if i == 0 else f"Analysis (continued {i+1})"
-                embed.add_field(name=field_title, value=part, inline=False)
-                total_chars += len(part) + len(field_title)
-        else:
-            embed.add_field(name="Analysis", value=ai_analysis, inline=False)
-        
-        # Add top articles summary (limited to fit in embed)
-        remaining_chars = max_embed_chars - len(ai_analysis)
-        if remaining_chars > 300:  # Only add if we have space
-            article_summary = f"**Top {min(3, len(articles))} Articles:**\n"
-            for i, article in enumerate(articles[:3], 1):
-                title_truncated = article['title'][:60] + "..." if len(article['title']) > 60 else article['title']
-                article_line = f"{i}. **{article['source']}** - {title_truncated}\n   🔗 [Read More]({article['url']})\n"
-                if len(article_summary + article_line) > remaining_chars - 100:
-                    break
-                article_summary += article_line
+        for i, article in enumerate(display_articles, 1):
+            title_truncated = article['title'][:80] + "..." if len(article['title']) > 80 else article['title']
+            published = ""
+            if article.get('published_at'):
+                try:
+                    pub_date = article['published_at']
+                    if isinstance(pub_date, str):
+                        from datetime import datetime
+                        pub_date = datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
+                    published = f" *({pub_date.strftime('%m/%d %H:%M')})*"
+                except:
+                    published = ""
             
-            if len(article_summary) > 50:  # Only add if we have actual content
-                embed.add_field(name="Featured Articles", value=article_summary, inline=False)
+            article_list += f"**{i}.** [{article['source']}] {title_truncated}{published}\n\n"
         
-        # Add database stats
-        stats = database.get_database_stats()
-        fetch_info = scheduler.get_last_fetch_info()
-        footer_text = f"Articles analyzed: {len(articles)} | Total in DB: {stats['total_articles']}"
-        if fetch_info['last_auto_fetch']:
-            footer_text += f" | Last update: {fetch_info['last_auto_fetch'].strftime('%H:%M %d/%m')}"
-        
-        embed.set_footer(text=footer_text)
+        embed.add_field(name="Available Articles", value=article_list, inline=False)
+        embed.set_footer(text="React with 1️⃣-9️⃣ to select articles • Multiple selections allowed")
         
         await status_message.edit(embed=embed)
+        
+        # Store selection state
+        selection_key = f"{ctx.channel.id}_{status_message.id}_{ctx.author.id}"
+        pending_selections[selection_key] = {
+            'articles': display_articles,
+            'source': source,
+            'user_id': ctx.author.id,
+            'channel_id': ctx.channel.id,
+            'message_id': status_message.id,
+            'timestamp': datetime.now()
+        }
+        
+        # Add number reactions
+        number_emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣']
+        for i in range(min(len(display_articles), 9)):
+            await status_message.add_reaction(number_emojis[i])
+        
+        # Add "All" option
+        await status_message.add_reaction('🔥')  # All articles
         
     except Exception as e:
         logger.error(f"Error in news command: {str(e)}")
         embed = discord.Embed(
             title="❌ Error",
-            description="Sorry, I encountered an error while analyzing news. Please try again later.",
+            description="Sorry, I encountered an error while loading articles. Please try again later.",
             color=0xff0000
         )
         await ctx.send(embed=embed)
