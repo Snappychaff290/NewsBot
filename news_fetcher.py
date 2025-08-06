@@ -25,8 +25,16 @@ class NewsFetcher:
             return [feed.strip() for feed in feeds_str.split(',')]
         return [
             'https://rss.cnn.com/rss/edition.rss',
-            'https://feeds.foxnews.com/foxnews/latest',
-            'https://feeds.reuters.com/reuters/topNews'
+            'https://feeds.reuters.com/reuters/topNews',
+            'https://rss.bbc.co.uk/rss/newsonline_world_edition/front_page/rss.xml',
+            'https://feeds.washingtonpost.com/rss/world',
+            'https://www.jpost.com/rss/rssfeedsheadlines.aspx',
+            'https://www.tehrantimes.com/rss',
+            'https://www.aljazeera.com/xml/rss/all.xml',
+            'https://timesofindia.indiatimes.com/rssfeedstopstories.cms',
+            'https://www.scmp.com/rss/91/feed',
+            'https://www.rt.com/rss/',
+            'https://english.alarabiya.net/rss.xml'
         ]
     
     def fetch_from_rss(self, feed_url: str) -> List[Dict]:
@@ -34,7 +42,14 @@ class NewsFetcher:
         articles = []
         try:
             logger.info(f"Fetching from RSS: {feed_url}")
-            feed = feedparser.parse(feed_url)
+            
+            # Set user agent for better compatibility with international sources
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            # Parse RSS with headers
+            feed = feedparser.parse(feed_url, request_headers=headers)
             
             for entry in feed.entries[:10]:  # Limit to 10 most recent
                 try:
@@ -47,6 +62,9 @@ class NewsFetcher:
                     full_text = entry.get('summary', '')
                     try:
                         article = Article(entry.link)
+                        article.set_config({
+                            'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                        })
                         article.download()
                         article.parse()
                         if article.text and len(article.text) > len(full_text):
@@ -151,17 +169,33 @@ class NewsFetcher:
         """Extract source name from URL."""
         try:
             domain = url.split('/')[2].lower()
-            if 'cnn' in domain:
-                return 'CNN'
-            elif 'fox' in domain:
-                return 'Fox News'
-            elif 'reuters' in domain:
-                return 'Reuters'
-            elif 'bbc' in domain:
-                return 'BBC'
-            elif 'nytimes' in domain:
-                return 'New York Times'
-            else:
-                return domain.replace('www.', '').title()
-        except:
+            
+            # Define source mappings for better recognition
+            source_mappings = {
+                'cnn.com': 'CNN',
+                'foxnews.com': 'Fox News', 
+                'reuters.com': 'Reuters',
+                'bbc.co.uk': 'BBC',
+                'nytimes.com': 'New York Times',
+                'washingtonpost.com': 'Washington Post',
+                'jpost.com': 'Jerusalem Post',
+                'tehrantimes.com': 'Tehran Times',
+                'aljazeera.com': 'Al Jazeera',
+                'timesofindia.indiatimes.com': 'Times of India',
+                'scmp.com': 'South China Morning Post',
+                'rt.com': 'RT News',
+                'alarabiya.net': 'Al Arabiya'
+            }
+            
+            # Check for exact matches
+            for key, source_name in source_mappings.items():
+                if key in domain:
+                    return source_name
+            
+            # Fallback to domain name cleanup
+            clean_domain = domain.replace('www.', '').replace('english.', '')
+            return clean_domain.split('.')[0].title()
+            
+        except Exception as e:
+            logger.error(f"Error extracting source from URL {url}: {str(e)}")
             return 'Unknown'

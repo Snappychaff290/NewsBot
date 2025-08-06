@@ -141,15 +141,15 @@ class ConversationalResponder:
     def _get_help_response(self) -> str:
         """Return a help message about the bot's capabilities."""
         return """I can help you with:
-• 📰 Get AI analysis of latest news with `|news`
+• 🔍 Get skeptical analysis of latest news with `|news` - exposes bias & agendas
 • 🔄 Fetch new articles manually with `|update`
 • 🏢 List news sources with `|sources`
 • 📊 View bot statistics with `|stats`
 • 💬 Answer questions about recent news when mentioned
-• 🔍 Search for articles on specific topics
+• 🎯 Cut through propaganda and reveal what's really happening
 
 **Commands:**
-• `|news [source]` - AI analysis of recent articles
+• `|news [source]` - Skeptical analysis exposing bias and hidden agendas
 • `|update` - Manually fetch latest news (bypasses 24hr limit)
 • `|sources` - List available news sources
 • `|stats` - Show bot statistics

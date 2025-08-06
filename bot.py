@@ -98,7 +98,7 @@ async def on_message(message):
 @bot.command(name='news')
 async def fetch_news(ctx, *, source: str = None):
     """
-    Analyze and display latest news with AI summary.
+    Skeptical analysis of latest news - exposes bias and agendas.
     Usage: |news [source]
     Example: |news CNN
     """
@@ -107,9 +107,9 @@ async def fetch_news(ctx, *, source: str = None):
         
         # Send initial response
         embed = discord.Embed(
-            title="🧠 Analyzing Latest News...",
-            description="Please wait while I analyze the latest articles with AI.",
-            color=0x00ff00
+            title="🔍 Analyzing News Bias & Agendas...",
+            description="Please wait while I cut through the propaganda and expose the real story.",
+            color=0xff4444
         )
         status_message = await ctx.send(embed=embed)
         
@@ -145,18 +145,18 @@ async def fetch_news(ctx, *, source: str = None):
             await status_message.edit(embed=embed)
             return
         
-        # Get AI analysis of the articles
-        ai_analysis = summarizer.analyze_news_collection(articles)
+        # Get skeptical AI analysis of the articles
+        ai_analysis = summarizer.analyze_news_collection_skeptical(articles)
         
         # Create response embed with AI analysis
-        title = f"🧠 AI News Analysis"
+        title = f"🔍 Skeptical News Analysis"
         if source:
             title += f" - {source}"
         
         embed = discord.Embed(
             title=title,
-            description="**AI Analysis of Recent News:**",
-            color=0x9900ff
+            description="**🔍 Skeptical Analysis - Both Sides Have Agendas:**",
+            color=0xff4444
         )
         
         # Add AI analysis as main content

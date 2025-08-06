@@ -138,6 +138,58 @@ class NewsSummarizer:
             logger.error(f"Error generating response: {str(e)}")
             return "I'm sorry, I'm having trouble processing your request right now. Please try again later!"
     
+    def analyze_news_collection_skeptical(self, articles: list) -> str:
+        """Provide skeptical analysis of news articles - 'both sides have an agenda' perspective."""
+        try:
+            # Prepare articles for analysis
+            articles_text = ""
+            for i, article in enumerate(articles[:10], 1):  # Limit to 10 articles
+                articles_text += f"\n{i}. **{article.get('source', 'Unknown')}** - {article.get('title', '')}\n"
+                articles_text += f"Summary: {article.get('summary', 'No summary available')}\n"
+                if article.get('published_at'):
+                    articles_text += f"Published: {article.get('published_at')}\n"
+                articles_text += f"URL: {article.get('url', '')}\n\n"
+            
+            prompt = f"""
+            Analyze these news articles from a SKEPTICAL perspective. Remember: all media outlets have agendas, biases, and financial/political motivations.
+            
+            Provide analysis covering:
+            1. **What's Really Happening** - Strip away the spin and identify the core facts
+            2. **Who Benefits** - Which groups, companies, or political actors gain from each narrative
+            3. **Source Bias Analysis** - How each outlet's ownership, funding, or political leanings shape their coverage
+            4. **What's Being Omitted** - Important context or opposing viewpoints being downplayed or ignored
+            5. **Cui Bono** - Follow the money/power - who wins if readers believe this narrative
+            6. **Propaganda Techniques** - Identify emotional manipulation, loaded language, or selective fact presentation
+            
+            Be brutally honest. Ignore political correctness entirely. Both left and right wing sources push agendas. Call out manipulation regardless of which "side" is doing it. Look for:
+            - Corporate interests disguised as news
+            - Government narratives being parroted uncritically
+            - Manufactured controversies to distract from real issues
+            - Selective outrage based on political convenience
+            - Economic motivations behind news coverage
+            
+            Don't pull punches. Readers deserve to know they're being manipulated.
+            
+            Articles to analyze:
+            {articles_text}
+            """
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a skeptical media analyst who sees through propaganda and spin. You understand that all news sources have agendas - corporate, political, or ideological. Your job is to expose bias, identify manipulation, and reveal what's really happening behind the sanitized narratives. You ignore political correctness and call out bullshit from all sides equally. You're cynical but accurate."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1200,
+                temperature=0.4  # Slightly higher for more critical thinking
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            logger.error(f"Error analyzing news collection: {str(e)}")
+            return "I'm sorry, I encountered an error while analyzing the news articles."
+    
     def analyze_news_collection(self, articles: list) -> str:
         """Analyze a collection of articles for unbiased summary and intent analysis."""
         try:
