@@ -47,12 +47,13 @@ async def on_ready():
     await bot.change_presence(
         activity=discord.Activity(
             type=discord.ActivityType.watching,
-            name="📰 the latest news"
+            name="🔍 through media BS & propaganda"
         )
     )
     
-    print(f"🧠 AI News Bot is online!")
+    print(f"🔍 No-BS News Analyst is online!")
     print(f"📊 Database: {database.get_database_stats()['total_articles']} articles stored")
+    print(f"💥 Ready to cut through propaganda and expose the truth!")
 
 @bot.event
 async def on_message(message):

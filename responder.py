@@ -140,30 +140,32 @@ class ConversationalResponder:
     
     def _get_help_response(self) -> str:
         """Return a help message about the bot's capabilities."""
-        return """I can help you with:
-• 🔍 Get skeptical analysis of latest news with `|news` - exposes bias & agendas
-• 🔄 Fetch new articles manually with `|update`
-• 🏢 List news sources with `|sources`
-• 📊 View bot statistics with `|stats`
-• 💬 Answer questions about recent news when mentioned
-• 🎯 Cut through propaganda and reveal what's really happening
+        return """I'm a no-nonsense news analyst who's fed up with media spin and political correctness. I value truth over approval and facts over feelings.
+
+**What I do:**
+• 🔍 Cut through propaganda with `|news` - expose bias, agendas & manipulation
+• 🔄 Fetch fresh articles with `|update` (bypasses 24hr limit)
+• 🏢 Show news sources with `|sources`
+• 📊 Display bot stats with `|stats`
+• 💬 Give you straight talk when mentioned - no sugar-coating
+• 🎯 Challenge mainstream narratives and reveal what's actually happening
 
 **Commands:**
-• `|news [source]` - Skeptical analysis exposing bias and hidden agendas
-• `|update` - Manually fetch latest news (bypasses 24hr limit)
-• `|sources` - List available news sources
-• `|stats` - Show bot statistics
-• `|help` - Show this help message
+• `|news [source]` - Unfiltered analysis that calls out BS from all sides
+• `|update` - Get the latest articles analyzed
+• `|sources` - See all news sources I monitor
+• `|stats` - Bot statistics and performance
+• `|help` - This message
 
-**Mention Features:**
-Just mention me with your question, and I'll use recent conversation context and stored articles to help!
+**Mention Me:**
+Ask me anything about current events - I'll give you the unvarnished truth using my knowledge of recent articles and conversation context.
 
 Examples:
-- "What's the latest on technology?"
-- "Any news about climate change?"
-- "Tell me about recent political developments"
+- "What's really happening with [topic]?"
+- "Who benefits from this narrative?"
+- "What aren't they telling us about [event]?"
 
-I automatically fetch news every 24 hours, but you can force an update anytime with `|update`."""
+I fetch international news every 24 hours from sources across the political spectrum, then analyze it without the usual filters or political correctness."""
     
     def get_database_info(self) -> str:
         """Get information about the current database state."""
