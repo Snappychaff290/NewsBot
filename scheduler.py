@@ -56,8 +56,13 @@ class NewsScheduler:
             
             logger.info(f"Processing {len(new_articles)} new articles...")
             
+            # Limit articles to prevent heartbeat blocking (max 20 at a time)
+            articles_to_process = new_articles[:20]
+            if len(new_articles) > 20:
+                logger.info(f"Limiting to 20 articles to prevent Discord heartbeat issues (had {len(new_articles)})")
+            
             # Analyze articles with AI
-            analyzed_articles = self.summarizer.batch_analyze_articles(new_articles)
+            analyzed_articles = self.summarizer.batch_analyze_articles(articles_to_process)
             
             # Store in database
             stored_count = 0
@@ -81,6 +86,20 @@ class NewsScheduler:
     
     def start_scheduler(self):
         """Start the background scheduler."""
+        if self.scheduler.running:
+            logger.info("Scheduler already running, skipping start")
+            return
+            
+        # Check if we should run immediately or wait
+        latest_update = self.database.get_latest_update_time()
+        should_run_now = True
+        
+        if latest_update:
+            time_since_update = datetime.now() - latest_update.replace(tzinfo=None)
+            if time_since_update.total_seconds() < (6 * 3600):  # 6 hours
+                should_run_now = False
+                logger.info(f"Skipping startup fetch - last update was {time_since_update} ago (less than 6 hours)")
+        
         # Add the scheduled job
         self.scheduler.add_job(
             func=self.fetch_and_process_news,
@@ -88,7 +107,7 @@ class NewsScheduler:
             id='fetch_news',
             name='Fetch and process news articles',
             replace_existing=True,
-            next_run_time=datetime.now()  # Run immediately on start
+            next_run_time=datetime.now() if should_run_now else None
         )
         
         self.scheduler.start()

@@ -115,3 +115,14 @@ class NewsDatabase:
                 'unique_sources': unique_sources,
                 'latest_update': latest_update
             }
+    
+    def get_latest_update_time(self) -> Optional[datetime]:
+        """Get the timestamp of the most recent article insertion."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT created_at FROM articles ORDER BY created_at DESC LIMIT 1')
+            result = cursor.fetchone()
+            if result and result[0]:
+                # Parse the datetime string from SQLite
+                return datetime.fromisoformat(result[0].replace('Z', '+00:00').replace(' ', 'T'))
+            return None

@@ -86,12 +86,18 @@ class NewsSummarizer:
     
     def batch_analyze_articles(self, articles: list) -> list:
         """Analyze multiple articles in batch."""
+        import asyncio
         analyzed_articles = []
         
         for i, article in enumerate(articles):
             logger.info(f"Analyzing article {i+1}/{len(articles)}: {article.get('title', 'Untitled')}")
             analyzed_article = self.analyze_article(article)
             analyzed_articles.append(analyzed_article)
+            
+            # Add delay between API calls to prevent heartbeat blocking
+            if i < len(articles) - 1:  # Don't delay after the last article
+                import time
+                time.sleep(1)  # 1 second delay between calls
         
         return analyzed_articles
     

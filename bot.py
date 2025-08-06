@@ -159,23 +159,38 @@ async def fetch_news(ctx, *, source: str = None):
             color=0xff4444
         )
         
-        # Add AI analysis as main content
+        # Add AI analysis as main content (with size limits)
+        max_embed_chars = 5500  # Leave some buffer for other fields
+        
+        if len(ai_analysis) > max_embed_chars:
+            ai_analysis = ai_analysis[:max_embed_chars] + "\n\n**[Analysis truncated due to length limits]**"
+        
         if len(ai_analysis) > 1024:
             # Split long analysis into multiple fields
             analysis_parts = [ai_analysis[i:i+1024] for i in range(0, len(ai_analysis), 1024)]
+            total_chars = 0
             for i, part in enumerate(analysis_parts):
+                if total_chars + len(part) > max_embed_chars:
+                    break
                 field_title = "Analysis" if i == 0 else f"Analysis (continued {i+1})"
                 embed.add_field(name=field_title, value=part, inline=False)
+                total_chars += len(part) + len(field_title)
         else:
             embed.add_field(name="Analysis", value=ai_analysis, inline=False)
         
-        # Add top articles summary
-        article_summary = f"**Top {min(5, len(articles))} Articles:**\n"
-        for i, article in enumerate(articles[:5], 1):
-            article_summary += f"{i}. **{article['source']}** - {article['title'][:80]}...\n"
-            article_summary += f"   🔗 [Read More]({article['url']})\n"
-        
-        embed.add_field(name="Featured Articles", value=article_summary, inline=False)
+        # Add top articles summary (limited to fit in embed)
+        remaining_chars = max_embed_chars - len(ai_analysis)
+        if remaining_chars > 300:  # Only add if we have space
+            article_summary = f"**Top {min(3, len(articles))} Articles:**\n"
+            for i, article in enumerate(articles[:3], 1):
+                title_truncated = article['title'][:60] + "..." if len(article['title']) > 60 else article['title']
+                article_line = f"{i}. **{article['source']}** - {title_truncated}\n   🔗 [Read More]({article['url']})\n"
+                if len(article_summary + article_line) > remaining_chars - 100:
+                    break
+                article_summary += article_line
+            
+            if len(article_summary) > 50:  # Only add if we have actual content
+                embed.add_field(name="Featured Articles", value=article_summary, inline=False)
         
         # Add database stats
         stats = database.get_database_stats()
