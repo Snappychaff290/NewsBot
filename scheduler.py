@@ -54,15 +54,17 @@ class NewsScheduler:
                 logger.info("No new articles to process")
                 return
             
-            logger.info(f"Processing {len(new_articles)} new articles...")
+            logger.info(f"Processing {len(new_articles)} new articles with US-emphasized source selection...")
+            logger.info("Bot may appear offline during analysis - this is normal and prevents interruption during heavy processing")
             
-            # Limit articles to prevent heartbeat blocking (max 20 at a time)
-            articles_to_process = new_articles[:20]
-            if len(new_articles) > 20:
-                logger.info(f"Limiting to 20 articles to prevent Discord heartbeat issues (had {len(new_articles)})")
+            # Use US-emphasized source coverage (US: 12 articles, International: 5 articles per source)
+            selected_articles = self._select_balanced_articles_per_source(new_articles, max_per_source=8)
+            logger.info(f"Selected {len(selected_articles)} articles from {len(new_articles)} total for US-emphasized coverage")
             
-            # Analyze articles with AI
-            analyzed_articles = self.summarizer.batch_analyze_articles(articles_to_process)
+            # Analyze selected articles with AI
+            analyzed_articles = self.summarizer.batch_analyze_articles(selected_articles)
+            
+            logger.info(f"Completed AI analysis of {len(analyzed_articles)} articles")
             
             # Store in database
             stored_count = 0
@@ -83,6 +85,70 @@ class NewsScheduler:
             
         except Exception as e:
             logger.error(f"Error in news fetch: {str(e)}")
+    
+    def _select_balanced_articles_per_source(self, all_articles: list, max_per_source: int = 8) -> list:
+        """Select articles with emphasis on US sources while maintaining international coverage."""
+        try:
+            # Define US vs International sources
+            us_sources = {
+                'CNN', 'Fox News', 'New York Times', 'Washington Post', 
+                'NBC News', 'ABC News', 'NPR', 'Reuters'
+            }
+            
+            # Group articles by source
+            articles_by_source = {}
+            for article in all_articles:
+                source = article.get('source', 'Unknown')
+                if source not in articles_by_source:
+                    articles_by_source[source] = []
+                articles_by_source[source].append(article)
+            
+            # Separate US and International sources
+            us_sources_found = {}
+            intl_sources_found = {}
+            
+            for source, articles in articles_by_source.items():
+                if source in us_sources:
+                    us_sources_found[source] = articles
+                else:
+                    intl_sources_found[source] = articles
+            
+            logger.info(f"Found articles from {len(articles_by_source)} sources:")
+            logger.info(f"  US sources: {len(us_sources_found)} sources")
+            for source, articles in us_sources_found.items():
+                logger.info(f"    {source}: {len(articles)} articles")
+            logger.info(f"  International sources: {len(intl_sources_found)} sources")
+            for source, articles in intl_sources_found.items():
+                logger.info(f"    {source}: {len(articles)} articles")
+            
+            selected_articles = []
+            
+            # Prioritize US sources - take up to 12 articles each
+            for source, source_articles in us_sources_found.items():
+                us_articles_to_take = min(len(source_articles), 12)
+                selected_source_articles = source_articles[:us_articles_to_take]
+                selected_articles.extend(selected_source_articles)
+                
+                logger.info(f"{source} (US): Selected {us_articles_to_take} articles")
+            
+            # International sources - take up to 5 articles each
+            for source, source_articles in intl_sources_found.items():
+                intl_articles_to_take = min(len(source_articles), 5)
+                selected_source_articles = source_articles[:intl_articles_to_take]
+                selected_articles.extend(selected_source_articles)
+                
+                logger.info(f"{source} (Intl): Selected {intl_articles_to_take} articles")
+            
+            logger.info(f"Total selected: {len(selected_articles)} articles (US-emphasized)")
+            logger.info(f"  US articles: {sum(min(len(articles), 12) for articles in us_sources_found.values())}")
+            logger.info(f"  International articles: {sum(min(len(articles), 5) for articles in intl_sources_found.values())}")
+            
+            return selected_articles
+            
+        except Exception as e:
+            logger.error(f"Error in US-emphasized article selection: {str(e)}")
+            # Fallback: return all articles (will be processed without limit)
+            return all_articles
     
     def start_scheduler(self):
         """Start the background scheduler."""

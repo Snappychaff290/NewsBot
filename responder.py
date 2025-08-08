@@ -49,33 +49,68 @@ class ConversationalResponder:
                     context += f"{msg.get('author', 'User')}: {msg.get('content', '')}\n"
                 context += "\n"
             
-            # Always try to find relevant articles first, regardless of whether it seems "news-related"
-            search_terms = self.extract_search_terms(message)
-            relevant_articles = []
-            
-            if search_terms:
-                for term in search_terms:
-                    articles = self.database.search_articles(term, limit=2)
-                    relevant_articles.extend(articles)
+            # Use intelligent article selection for better relevance
+            try:
+                # Get all available article titles for AI selection
+                all_article_titles = self.database.get_all_article_titles(limit=100)
                 
-                # Remove duplicates while preserving order
-                seen_urls = set()
-                unique_articles = []
-                for article in relevant_articles:
-                    if article['url'] not in seen_urls:
-                        unique_articles.append(article)
-                        seen_urls.add(article['url'])
+                if all_article_titles:
+                    # Use AI to select the most relevant articles
+                    selected_article_ids = self.summarizer.select_relevant_articles(
+                        message, all_article_titles, max_articles=5
+                    )
+                    
+                    if selected_article_ids:
+                        # Get full article data for selected articles
+                        selected_articles = self.database.get_articles_by_ids(selected_article_ids)
+                        
+                        # Generate response with intelligently selected articles
+                        ai_response = self.summarizer.generate_response_with_selected_articles(
+                            message, selected_articles, context
+                        )
+                        return ai_response
                 
-                # Use the unique articles for context
-                relevant_articles = unique_articles[:3]
-            
-            # If no relevant articles but the query seems news-related, get recent articles
-            if not relevant_articles and self.is_news_related(message):
-                relevant_articles = self.database.get_recent_articles(limit=3)
-            
-            # Generate conversational response with all available context
-            ai_response = self.summarizer.generate_response(message, relevant_articles, context)
-            return ai_response
+                # Fallback to old method if intelligent selection fails or no articles available
+                search_terms = self.extract_search_terms(message)
+                relevant_articles = []
+                
+                if search_terms:
+                    for term in search_terms:
+                        articles = self.database.search_articles(term, limit=2)
+                        relevant_articles.extend(articles)
+                    
+                    # Remove duplicates while preserving order
+                    seen_urls = set()
+                    unique_articles = []
+                    for article in relevant_articles:
+                        if article['url'] not in seen_urls:
+                            unique_articles.append(article)
+                            seen_urls.add(article['url'])
+                    
+                    # Use the unique articles for context
+                    relevant_articles = unique_articles[:3]
+                
+                # If no relevant articles but the query seems news-related, get recent articles
+                if not relevant_articles and self.is_news_related(message):
+                    relevant_articles = self.database.get_recent_articles(limit=3)
+                
+                # Generate conversational response with all available context
+                ai_response = self.summarizer.generate_response(message, relevant_articles, context)
+                return ai_response
+                
+            except Exception as e:
+                logger.error(f"Error in intelligent article selection, falling back to basic search: {str(e)}")
+                # Fallback to original method if intelligent selection fails
+                search_terms = self.extract_search_terms(message)
+                relevant_articles = []
+                
+                if search_terms:
+                    for term in search_terms:
+                        articles = self.database.search_articles(term, limit=2)
+                        relevant_articles.extend(articles)
+                
+                ai_response = self.summarizer.generate_response(message, relevant_articles, context)
+                return ai_response
                 
         except Exception as e:
             logger.error(f"Error handling mention: {str(e)}")

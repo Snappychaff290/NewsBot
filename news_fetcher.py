@@ -24,17 +24,27 @@ class NewsFetcher:
         if feeds_str:
             return [feed.strip() for feed in feeds_str.split(',')]
         return [
+            # Major US/International Sources
             'https://rss.cnn.com/rss/edition.rss',
+            'https://moxie.foxnews.com/google-publisher/latest.xml',
             'https://feeds.reuters.com/reuters/topNews',
-            'https://rss.bbc.co.uk/rss/newsonline_world_edition/front_page/rss.xml',
+            'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
             'https://feeds.washingtonpost.com/rss/world',
+            'https://rss.bbc.co.uk/rss/newsonline_world_edition/front_page/rss.xml',
+            
+            # International/Regional Sources  
             'https://www.jpost.com/rss/rssfeedsheadlines.aspx',
             'https://www.tehrantimes.com/rss',
             'https://www.aljazeera.com/xml/rss/all.xml',
             'https://timesofindia.indiatimes.com/rssfeedstopstories.cms',
             'https://www.scmp.com/rss/91/feed',
             'https://www.rt.com/rss/',
-            'https://english.alarabiya.net/rss.xml'
+            'https://english.alarabiya.net/rss.xml',
+            
+            # Additional Major Sources
+            'https://feeds.nbcnews.com/nbcnews/public/world',
+            'https://feeds.abcnews.com/abcnews/internationalheadlines',
+            'https://feeds.npr.org/1001/rss.xml'
         ]
     
     def fetch_from_rss(self, feed_url: str) -> List[Dict]:
@@ -51,7 +61,17 @@ class NewsFetcher:
             # Parse RSS with headers
             feed = feedparser.parse(feed_url, request_headers=headers)
             
-            for entry in feed.entries[:10]:  # Limit to 10 most recent
+            # Check for feed parsing errors
+            if feed.bozo:
+                logger.warning(f"RSS feed parsing warning for {feed_url}: {feed.bozo_exception}")
+            
+            if not feed.entries:
+                logger.warning(f"No entries found in RSS feed: {feed_url}")
+                return articles
+            
+            logger.info(f"Found {len(feed.entries)} entries in RSS feed: {feed_url}")
+            
+            for entry in feed.entries:  # Process all entries from RSS feed
                 try:
                     # Extract published date
                     published_at = None
@@ -152,17 +172,48 @@ class NewsFetcher:
     def fetch_all_sources(self) -> List[Dict]:
         """Fetch articles from all configured sources."""
         all_articles = []
+        successful_feeds = 0
+        failed_feeds = 0
+        
+        logger.info(f"Starting to fetch from {len(self.rss_feeds)} RSS feeds")
         
         # Fetch from RSS feeds
         for feed_url in self.rss_feeds:
-            articles = self.fetch_from_rss(feed_url)
-            all_articles.extend(articles)
+            try:
+                articles = self.fetch_from_rss(feed_url)
+                if articles:
+                    all_articles.extend(articles)
+                    successful_feeds += 1
+                    logger.info(f"✓ Successfully fetched {len(articles)} articles from {feed_url}")
+                else:
+                    failed_feeds += 1
+                    logger.warning(f"✗ No articles fetched from {feed_url}")
+            except Exception as e:
+                failed_feeds += 1
+                logger.error(f"✗ Failed to fetch from {feed_url}: {str(e)}")
         
         # Optionally fetch from NewsAPI
-        newsapi_articles = self.fetch_from_newsapi()
-        all_articles.extend(newsapi_articles)
+        try:
+            newsapi_articles = self.fetch_from_newsapi()
+            if newsapi_articles:
+                all_articles.extend(newsapi_articles)
+                logger.info(f"✓ Fetched {len(newsapi_articles)} articles from NewsAPI")
+        except Exception as e:
+            logger.warning(f"NewsAPI fetch failed: {str(e)}")
         
-        logger.info(f"Fetched {len(all_articles)} articles total")
+        logger.info(f"Feed summary: {successful_feeds} successful, {failed_feeds} failed")
+        logger.info(f"Total articles fetched: {len(all_articles)}")
+        
+        # Group by source for visibility
+        sources_count = {}
+        for article in all_articles:
+            source = article.get('source', 'Unknown')
+            sources_count[source] = sources_count.get(source, 0) + 1
+        
+        logger.info("Articles per source:")
+        for source, count in sorted(sources_count.items()):
+            logger.info(f"  {source}: {count} articles")
+        
         return all_articles
     
     def _extract_source_from_url(self, url: str) -> str:
@@ -173,11 +224,15 @@ class NewsFetcher:
             # Define source mappings for better recognition
             source_mappings = {
                 'cnn.com': 'CNN',
-                'foxnews.com': 'Fox News', 
+                'foxnews.com': 'Fox News',
+                'moxie.foxnews.com': 'Fox News',
                 'reuters.com': 'Reuters',
                 'bbc.co.uk': 'BBC',
                 'nytimes.com': 'New York Times',
                 'washingtonpost.com': 'Washington Post',
+                'nbcnews.com': 'NBC News',
+                'abcnews.com': 'ABC News',
+                'npr.org': 'NPR',
                 'jpost.com': 'Jerusalem Post',
                 'tehrantimes.com': 'Tehran Times',
                 'aljazeera.com': 'Al Jazeera',

@@ -126,3 +126,32 @@ class NewsDatabase:
                 # Parse the datetime string from SQLite
                 return datetime.fromisoformat(result[0].replace('Z', '+00:00').replace(' ', 'T'))
             return None
+    
+    def get_all_article_titles(self, limit: int = 100) -> List[Dict]:
+        """Get all article titles with IDs for intelligent selection."""
+        with sqlite3.connect(self.db_name) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, title, source, published_at
+                FROM articles 
+                ORDER BY created_at DESC 
+                LIMIT ?
+            ''', (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_articles_by_ids(self, article_ids: List[int]) -> List[Dict]:
+        """Get full article data by a list of article IDs."""
+        if not article_ids:
+            return []
+        
+        with sqlite3.connect(self.db_name) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            placeholders = ','.join('?' for _ in article_ids)
+            cursor.execute(f'''
+                SELECT * FROM articles 
+                WHERE id IN ({placeholders})
+                ORDER BY created_at DESC
+            ''', article_ids)
+            return [dict(row) for row in cursor.fetchall()]
