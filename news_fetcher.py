@@ -17,22 +17,31 @@ class NewsFetcher:
     def __init__(self):
         self.rss_feeds = self._get_rss_feeds()
         self.newsapi_key = os.getenv('NEWSAPI_KEY')
+        self.us_sources = {
+            'CNN', 'Fox News', 'Reuters', 'New York Times', 'Washington Post',
+            'NBC News', 'ABC News', 'NPR', 'New York Post'
+        }
     
     def _get_rss_feeds(self) -> List[str]:
         """Get RSS feed URLs from environment variables."""
         feeds_str = os.getenv('RSS_FEEDS', '')
         if feeds_str:
             return [feed.strip() for feed in feeds_str.split(',')]
-        return [
-            # Major US/International Sources
+        # Prioritize US sources first
+        us_sources = [
             'https://rss.cnn.com/rss/edition.rss',
             'https://moxie.foxnews.com/google-publisher/latest.xml',
             'https://feeds.reuters.com/reuters/topNews',
             'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
             'https://feeds.washingtonpost.com/rss/world',
+            'https://feeds.nbcnews.com/nbcnews/public/world',
+            'https://feeds.abcnews.com/abcnews/internationalheadlines',
+            'https://feeds.npr.org/1001/rss.xml',
+            'https://nypost.com/feed/',
+        ]
+        
+        international_sources = [
             'https://rss.bbc.co.uk/rss/newsonline_world_edition/front_page/rss.xml',
-            
-            # International/Regional Sources  
             'https://www.jpost.com/rss/rssfeedsheadlines.aspx',
             'https://www.tehrantimes.com/rss',
             'https://www.aljazeera.com/xml/rss/all.xml',
@@ -40,12 +49,9 @@ class NewsFetcher:
             'https://www.scmp.com/rss/91/feed',
             'https://www.rt.com/rss/',
             'https://english.alarabiya.net/rss.xml',
-            
-            # Additional Major Sources
-            'https://feeds.nbcnews.com/nbcnews/public/world',
-            'https://feeds.abcnews.com/abcnews/internationalheadlines',
-            'https://feeds.npr.org/1001/rss.xml'
         ]
+        
+        return us_sources + international_sources
     
     def fetch_from_rss(self, feed_url: str) -> List[Dict]:
         """Fetch articles from a single RSS feed."""
@@ -170,12 +176,12 @@ class NewsFetcher:
         return articles
     
     def fetch_all_sources(self) -> List[Dict]:
-        """Fetch articles from all configured sources."""
+        """Fetch articles from all configured sources with US media prioritization."""
         all_articles = []
         successful_feeds = 0
         failed_feeds = 0
         
-        logger.info(f"Starting to fetch from {len(self.rss_feeds)} RSS feeds")
+        logger.info(f"Starting to fetch from {len(self.rss_feeds)} RSS feeds with US media prioritization")
         
         # Fetch from RSS feeds
         for feed_url in self.rss_feeds:
@@ -201,20 +207,62 @@ class NewsFetcher:
         except Exception as e:
             logger.warning(f"NewsAPI fetch failed: {str(e)}")
         
+        # Apply US media prioritization
+        prioritized_articles = self._prioritize_us_sources(all_articles)
+        
         logger.info(f"Feed summary: {successful_feeds} successful, {failed_feeds} failed")
-        logger.info(f"Total articles fetched: {len(all_articles)}")
+        logger.info(f"Total articles before prioritization: {len(all_articles)}")
+        logger.info(f"Total articles after US prioritization: {len(prioritized_articles)}")
         
         # Group by source for visibility
         sources_count = {}
-        for article in all_articles:
+        for article in prioritized_articles:
             source = article.get('source', 'Unknown')
             sources_count[source] = sources_count.get(source, 0) + 1
         
-        logger.info("Articles per source:")
+        logger.info("Articles per source (after US prioritization):")
+        us_count = 0
+        intl_count = 0
         for source, count in sorted(sources_count.items()):
-            logger.info(f"  {source}: {count} articles")
+            is_us = source in self.us_sources
+            prefix = "🇺🇸" if is_us else "🌍"
+            logger.info(f"  {prefix} {source}: {count} articles")
+            if is_us:
+                us_count += count
+            else:
+                intl_count += count
         
-        return all_articles
+        logger.info(f"Summary: {us_count} US articles, {intl_count} international articles")
+        
+        return prioritized_articles
+    
+    def _prioritize_us_sources(self, articles: List[Dict], us_limit: int = 12, intl_limit: int = 5) -> List[Dict]:
+        """Prioritize US sources by taking up to us_limit articles from each US source and intl_limit from international sources."""
+        from collections import defaultdict
+        
+        # Group articles by source
+        articles_by_source = defaultdict(list)
+        for article in articles:
+            source = article.get('source', 'Unknown')
+            articles_by_source[source].append(article)
+        
+        prioritized_articles = []
+        
+        # Process US sources first with higher limit
+        for source in self.us_sources:
+            if source in articles_by_source:
+                source_articles = articles_by_source[source][:us_limit]
+                prioritized_articles.extend(source_articles)
+                logger.info(f"🇺🇸 {source}: Selected {len(source_articles)} articles (US priority)")
+        
+        # Process international sources with lower limit
+        for source, source_articles in articles_by_source.items():
+            if source not in self.us_sources:
+                limited_articles = source_articles[:intl_limit]
+                prioritized_articles.extend(limited_articles)
+                logger.info(f"🌍 {source}: Selected {len(limited_articles)} articles (international)")
+        
+        return prioritized_articles
     
     def _extract_source_from_url(self, url: str) -> str:
         """Extract source name from URL."""
@@ -233,6 +281,7 @@ class NewsFetcher:
                 'nbcnews.com': 'NBC News',
                 'abcnews.com': 'ABC News',
                 'npr.org': 'NPR',
+                'nypost.com': 'New York Post',
                 'jpost.com': 'Jerusalem Post',
                 'tehrantimes.com': 'Tehran Times',
                 'aljazeera.com': 'Al Jazeera',
