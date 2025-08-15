@@ -450,6 +450,66 @@ class NewsSummarizer:
             # Fallback: return original articles
             return all_articles
     
+    def analyze_article_detailed(self, article_data: Dict) -> str:
+        """Analyze an article for key points, people mentioned, and comprehensive insights."""
+        try:
+            from datetime import datetime
+            current_date = datetime.now().strftime("%A, %B %d, %Y")
+            
+            # Prepare the content for analysis
+            content = f"""
+            Title: {article_data.get('title', '')}
+            Source: {article_data.get('source', '')}
+            Authors: {', '.join(article_data.get('authors', ['Unknown']))}
+            Published: {article_data.get('published_at', 'Unknown')}
+            Full Text: {article_data.get('full_text', '')[:4000]}
+            """
+            
+            # Create the detailed analysis prompt
+            prompt = f"""
+            Current date: {current_date}
+            
+            Analyze this article comprehensively and provide:
+            
+            **🔑 KEY POINTS:**
+            • Identify the 3-5 most important points/developments
+            • Focus on actionable information and significant facts
+            • Highlight what readers need to know
+            
+            **👥 PEOPLE MENTIONED:**
+            • List key individuals mentioned with their roles/relevance
+            • Include politicians, experts, officials, witnesses, etc.
+            • Note their significance to the story
+            
+            **📊 CONTEXT & IMPACT:**
+            • Why this matters now
+            • Who is affected or benefits
+            • Potential consequences or implications
+            
+            **🎯 CRITICAL ANALYSIS:**
+            • What might be missing from this narrative
+            • Potential biases or perspectives
+            • Questions readers should consider
+            
+            Be direct, factual, and skeptical. Don't just summarize - provide insights that help readers understand the full picture and think critically about what they're reading.
+            """
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a highly intelligent, no-nonsense assistant who analyzes news with clarity, skepticism, and integrity. You value truth over approval, facts over feelings, and honest conversation over scripted talking points. You speak plainly and think critically. Provide comprehensive analysis that helps readers understand not just what happened, but why it matters and what questions they should ask."},
+                    {"role": "user", "content": f"{prompt}\n\nArticle:\n{content}"}
+                ],
+                max_tokens=1000,
+                temperature=0.4
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            logger.error(f"Error in detailed article analysis: {str(e)}")
+            return f"I encountered an error while analyzing this article: {str(e)}. Please try again or check if the article content was properly extracted."
+    
     def analyze_news_collection(self, articles: list) -> str:
         """Analyze a collection of articles for unbiased summary and intent analysis."""
         try:
@@ -733,3 +793,63 @@ class NewsSummarizer:
             logger.error(f"Error in per-source article selection: {str(e)}")
             # Fallback: return original articles
             return all_articles
+    
+    def analyze_article_detailed(self, article_data: Dict) -> str:
+        """Analyze an article for key points, people mentioned, and comprehensive insights."""
+        try:
+            from datetime import datetime
+            current_date = datetime.now().strftime("%A, %B %d, %Y")
+            
+            # Prepare the content for analysis
+            content = f"""
+            Title: {article_data.get('title', '')}
+            Source: {article_data.get('source', '')}
+            Authors: {', '.join(article_data.get('authors', ['Unknown']))}
+            Published: {article_data.get('published_at', 'Unknown')}
+            Full Text: {article_data.get('full_text', '')[:4000]}
+            """
+            
+            # Create the detailed analysis prompt
+            prompt = f"""
+            Current date: {current_date}
+            
+            Analyze this article comprehensively and provide:
+            
+            **🔑 KEY POINTS:**
+            • Identify the 3-5 most important points/developments
+            • Focus on actionable information and significant facts
+            • Highlight what readers need to know
+            
+            **👥 PEOPLE MENTIONED:**
+            • List key individuals mentioned with their roles/relevance
+            • Include politicians, experts, officials, witnesses, etc.
+            • Note their significance to the story
+            
+            **📊 CONTEXT & IMPACT:**
+            • Why this matters now
+            • Who is affected or benefits
+            • Potential consequences or implications
+            
+            **🎯 CRITICAL ANALYSIS:**
+            • What might be missing from this narrative
+            • Potential biases or perspectives
+            • Questions readers should consider
+            
+            Be direct, factual, and skeptical. Don't just summarize - provide insights that help readers understand the full picture and think critically about what they're reading.
+            """
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a highly intelligent, no-nonsense assistant who analyzes news with clarity, skepticism, and integrity. You value truth over approval, facts over feelings, and honest conversation over scripted talking points. You speak plainly and think critically. Provide comprehensive analysis that helps readers understand not just what happened, but why it matters and what questions they should ask."},
+                    {"role": "user", "content": f"{prompt}\n\nArticle:\n{content}"}
+                ],
+                max_tokens=1000,
+                temperature=0.4
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            logger.error(f"Error in detailed article analysis: {str(e)}")
+            return f"I encountered an error while analyzing this article: {str(e)}. Please try again or check if the article content was properly extracted."

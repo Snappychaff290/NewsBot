@@ -554,6 +554,169 @@ async def list_sources(ctx):
         logger.error(f"Error in sources command: {str(e)}")
         await ctx.send("Sorry, I encountered an error while fetching sources.")
 
+@bot.command(name='analyze')
+async def analyze_url(ctx, url: str = None):
+    """
+    Analyze an article from any URL for key points and people mentioned.
+    Usage: |analyze [URL]
+    Example: |analyze https://example.com/news-article
+    """
+    try:
+        if not url:
+            embed = discord.Embed(
+                title="❌ URL Required",
+                description="Please provide a URL to analyze.\nUsage: `|analyze [URL]`\nExample: `|analyze https://example.com/article`",
+                color=0xff0000
+            )
+            await ctx.send(embed=embed)
+            return
+        
+        # Validate URL format
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+        
+        # Send initial response
+        embed = discord.Embed(
+            title="🔍 Analyzing Article...",
+            description=f"Extracting and analyzing content from:\n{url}",
+            color=0xff4444
+        )
+        status_message = await ctx.send(embed=embed)
+        
+        # Extract article content using newspaper4k with fallback
+        try:
+            from newspaper import Article
+            import requests
+            from bs4 import BeautifulSoup
+            
+            article_title = "No title found"
+            article_text = ""
+            article_authors = ["Unknown"]
+            article_publish_date = None
+            
+            # Try newspaper4k first
+            try:
+                article = Article(url)
+                article.download()
+                article.parse()
+                
+                if article.text:
+                    article_title = article.title or "No title found"
+                    article_text = article.text
+                    article_authors = article.authors if article.authors else ["Unknown"]
+                    article_publish_date = article.publish_date
+                else:
+                    raise Exception("No text extracted")
+                    
+            except Exception as newspaper_error:
+                logger.warning(f"Newspaper4k failed: {str(newspaper_error)}, trying fallback method")
+                
+                # Fallback: Use requests + BeautifulSoup
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+                
+                response = requests.get(url, headers=headers, timeout=10)
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Try to extract title
+                title_tag = soup.find('title') or soup.find('h1')
+                if title_tag:
+                    article_title = title_tag.get_text().strip()
+                
+                # Try to extract main content
+                # Look for common article content containers
+                content_selectors = [
+                    'article', '[role="main"]', '.article-content', '.post-content',
+                    '.entry-content', '.story-body', '.article-body', 'main'
+                ]
+                
+                for selector in content_selectors:
+                    content_div = soup.select_one(selector)
+                    if content_div:
+                        # Extract text from paragraphs
+                        paragraphs = content_div.find_all('p')
+                        if paragraphs:
+                            article_text = '\n\n'.join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
+                            if len(article_text) > 100:  # Only use if we got substantial content
+                                break
+                
+                # If still no content, try all paragraphs on the page
+                if not article_text or len(article_text) < 100:
+                    paragraphs = soup.find_all('p')
+                    article_text = '\n\n'.join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 50])
+            
+            if not article_text or len(article_text) < 50:
+                embed = discord.Embed(
+                    title="❌ Content Extraction Failed",
+                    description="Could not extract readable content from the provided URL. The site may block automated access or require JavaScript.",
+                    color=0xff0000
+                )
+                await status_message.edit(embed=embed)
+                return
+            
+            # Prepare article data for analysis
+            article_data = {
+                'title': article_title,
+                'url': url,
+                'source': news_fetcher._extract_source_from_url(url),
+                'published_at': article_publish_date,
+                'summary': article_text[:200] + '...' if len(article_text) > 200 else article_text,
+                'full_text': article_text,
+                'authors': article_authors
+            }
+            
+            # Get detailed analysis with key points and people mentioned
+            analysis = summarizer.analyze_article_detailed(article_data)
+            
+            # Create analysis embed
+            embed = discord.Embed(
+                title="🔍 Article Analysis Complete",
+                description=f"**Analysis of:** {article_data['title']}",
+                color=0x00ff00
+            )
+            
+            # Add basic info
+            embed.add_field(
+                name="📰 Article Info",
+                value=f"**Source:** {article_data['source']}\n**Authors:** {', '.join(article_data['authors'])}\n**URL:** [Read Original]({url})",
+                inline=False
+            )
+            
+            # Add analysis content (split if too long)
+            if len(analysis) > 1024:
+                # Split into multiple fields
+                analysis_parts = [analysis[i:i+1024] for i in range(0, len(analysis), 1024)]
+                for i, part in enumerate(analysis_parts):
+                    field_title = "🧠 Analysis" if i == 0 else f"🧠 Analysis (continued {i+1})"
+                    embed.add_field(name=field_title, value=part, inline=False)
+            else:
+                embed.add_field(name="🧠 Analysis", value=analysis, inline=False)
+            
+            embed.set_footer(text=f"Analysis requested by {ctx.author.display_name}")
+            
+            await status_message.edit(embed=embed)
+            
+        except Exception as extraction_error:
+            logger.error(f"Error extracting article content: {str(extraction_error)}")
+            embed = discord.Embed(
+                title="❌ Article Extraction Failed",
+                description=f"Failed to extract content from the URL:\n```{str(extraction_error)}```\n\nThe website may:\n• Block automated access\n• Require JavaScript\n• Have restricted content\n• Be temporarily unavailable",
+                color=0xff0000
+            )
+            await status_message.edit(embed=embed)
+            
+    except Exception as e:
+        logger.error(f"Error in analyze command: {str(e)}")
+        embed = discord.Embed(
+            title="❌ Analysis Error",
+            description="Sorry, I encountered an error while analyzing the article. Please check the URL and try again.",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+
 @bot.command(name='stats')
 async def show_stats(ctx):
     """Display bot statistics."""
@@ -597,7 +760,7 @@ async def show_stats(ctx):
         
         embed.add_field(
             name="🔧 Commands",
-            value="`|news` `|sources` `|stats` `|update` `|help`",
+            value="`|news` `|sources` `|stats` `|update` `|analyze` `|help`",
             inline=True
         )
         
