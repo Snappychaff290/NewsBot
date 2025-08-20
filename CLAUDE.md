@@ -50,6 +50,7 @@ The bot requires these environment variables in `.env`:
 - Article storage with schema: id, title, url, source, published_at, summary, intent, emotion, full_text, created_at
 - Methods: `insert_article()`, `get_recent_articles()`, `search_articles()`, `get_articles_by_source()`, `get_database_stats()`
 - **New methods for intelligent selection**: `get_all_article_titles()`, `get_articles_by_ids()` for AI-driven article selection
+- **Enhanced response generation**: Strong citation requirements, current date awareness, and comprehensive article context integration
 
 **news_fetcher.py** (News Acquisition)
 - RSS feed parsing using `feedparser` with comprehensive error handling
@@ -68,6 +69,7 @@ The bot requires these environment variables in `.env`:
 - Automatic current date context injection for temporal awareness
 - **Intelligent article selection**: Two-stage AI process that first selects relevant articles from entire database based on user questions, then generates comprehensive responses using selected articles
 - **Per-source article selection**: AI selects up to 10 most important articles per news source based on breaking news, significance, international impact, and uniqueness
+- **Enhanced response quality**: Explicit requirements for source citation, current date acknowledgment, and comprehensive article integration with URLs
 
 **scheduler.py** (Background Processing)
 - APScheduler for automated news fetching
@@ -96,6 +98,9 @@ The bot requires these environment variables in `.env`:
 
 **Intelligent Article Selection (Two-Stage AI Process)**:
 1. **Stage 1 - Selection**: When user asks a question, AI receives the question + titles of all articles in database (up to 100 recent articles), then selects up to 10 most relevant article IDs
+   - **US Source Prioritization**: For US political questions (containing keywords like "us politics", "congress", "biden", "trump", etc.), the AI strongly prioritizes US sources (CNN, Fox News, Reuters, NY Times, Washington Post, NBC, ABC, NPR) over international sources
+   - **Source Marking**: Articles are marked as [US SOURCE] or [INTL SOURCE] to guide AI selection
+   - **Geographic Relevance**: US political questions aim for 70% US sources, while international questions consider source diversity
 2. **Stage 2 - Response**: AI receives the user's question + full content of selected articles, then generates comprehensive response synthesizing information from multiple sources
 3. **Fallback System**: If intelligent selection fails, falls back to keyword-based search for reliability
 
